@@ -5,28 +5,42 @@ filter: Nearest,Nearest
 repeat: none
 hat-switch-background
   rotate: false
-  xy: 1, 131
+  xy: 1, 581
+  size: 320, 320
+  orig: 320, 320
+  offset: 0, 0
+  index: -1
+hat-switch-deactivated
+  rotate: false
+  xy: 1, 259
   size: 320, 320
   orig: 320, 320
   offset: 0, 0
   index: -1
 joystick-background
   rotate: false
-  xy: 323, 195
+  xy: 323, 645
+  size: 256, 256
+  orig: 256, 256
+  offset: 0, 0
+  index: -1
+joystick-deactivated
+  rotate: false
+  xy: 1, 1
   size: 256, 256
   orig: 256, 256
   offset: 0, 0
   index: -1
 hat-switch-knob
   rotate: false
-  xy: 1, 1
+  xy: 323, 515
   size: 128, 128
   orig: 128, 128
   offset: 0, 0
   index: -1
 joystick-knob
   rotate: false
-  xy: 581, 323
+  xy: 581, 773
   size: 128, 128
   orig: 128, 128
   offset: 0, 0

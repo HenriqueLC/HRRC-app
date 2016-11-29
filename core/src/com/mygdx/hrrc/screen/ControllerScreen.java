@@ -23,6 +23,7 @@ import com.badlogic.gdx.math.collision.Ray;
 import com.badlogic.gdx.net.Socket;
 import com.badlogic.gdx.net.SocketHints;
 import com.badlogic.gdx.scenes.scene2d.Stage;
+import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Touchpad;
 import com.badlogic.gdx.scenes.scene2d.utils.Drawable;
@@ -45,8 +46,10 @@ import static com.badlogic.gdx.graphics.GL20.GL_ONE_MINUS_SRC_ALPHA;
 class ControllerScreen extends AbstractScreen implements InputProcessor {
 
     private Stage stage;
-    private Touchpad arrowJoystick; //disposable
+    private Touchpad arrowJoystick;
+    private Image deactivatedArrowJoystick;
     private HatSwitch hatSwitch;
+    private Image deactivatedHatSwitch;
     private boolean hasArrowJoystick, hasHatSwitch;
     private ModelBatch modelBatch; // disposable
     private ModelInstance robot; // disposable
@@ -127,7 +130,7 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
     }
 
     private Joint getJoint(int screenX, int screenY) {
-        Joint oldSelectedJoint = selectedJoint;
+        Joint newSelectedJoint = null;
         Ray ray = camera3D.getPickRay(screenX, screenY);
         Vector3 position = new Vector3();
         float distance = -1;
@@ -138,24 +141,27 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                 continue;
             }
             if (Intersector.intersectRaySphere(ray, position, 5f, null)) {
-                selectedJoint = joint;
+                newSelectedJoint = joint;
                 distance = dist2;
             }
         }
-        return oldSelectedJoint;
+        return newSelectedJoint;
     }
 
     @Override
     public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-        Joint oldSelectedJoint = getJoint(screenX, screenY);
-        if (oldSelectedJoint != null) {
-            oldSelectedJoint.getSphere().materials.first().set(new BlendingAttribute(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA, 0f));
-            if (oldSelectedJoint == selectedJoint) {
+        Joint newSelectedJoint = getJoint(screenX, screenY);
+        if (newSelectedJoint != null) {
+            if (selectedJoint != null) {
+                selectedJoint.getSphere().materials.first().set(new BlendingAttribute(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA, 0f));
+            }
+            if (newSelectedJoint != selectedJoint) {
+                newSelectedJoint.getSphere().materials.first().set(new BlendingAttribute(false, 0.5f));
+                selectedJoint = newSelectedJoint;
+            }
+            else {
                 selectedJoint = null;
             }
-        }
-        if (selectedJoint != null) {
-            selectedJoint.getSphere().materials.first().set(new BlendingAttribute(false, 0.5f));
         }
         return true;
     }
@@ -227,10 +233,10 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                         String response = in.readLine();
                         if (response != null) {
                             // Convert the response string into a float array
-                            String[] tabOfFloatString = response.split(",");
-                            float[] nodes = new float[tabOfFloatString.length];
-                            for (int i = 0; i < tabOfFloatString.length; i++) {
-                                nodes[i] = Float.parseFloat(tabOfFloatString[i]);
+                            String[] tabOfFloats = response.split(",");
+                            float[] nodes = new float[tabOfFloats.length];
+                            for (int i = 0; i < tabOfFloats.length; i++) {
+                                nodes[i] = Float.parseFloat(tabOfFloats[i]);
                             }
                             // Head update
                             setEulerAngles("Head", nodes[0], nodes[1], 0f);
@@ -282,6 +288,8 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
         arrowJoystick = new Touchpad(10, arrowJoystickStyle);
         arrowJoystick.setWidth(arrowJoystickBackground.getWidth());
         arrowJoystick.setHeight(arrowJoystickBackground.getHeight());
+        deactivatedArrowJoystick = new Image(textureAtlas.findRegion("joystick-deactivated"));
+        stage.addActor(deactivatedArrowJoystick);
         // Hat Switch
         Skin hatSwitchSkin = new Skin();
         hatSwitchSkin.addRegions(textureAtlas);
@@ -290,6 +298,8 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
         hatSwitch = new HatSwitch(hatSwitchKnob, 64f, hatSwitchBackground, 192f);
         hatSwitch.setWidth(hatSwitchBackground.getMinWidth());
         hatSwitch.setHeight(hatSwitchBackground.getMinHeight());
+        deactivatedHatSwitch = new Image(textureAtlas.findRegion("hat-switch-deactivated"));
+        stage.addActor(deactivatedHatSwitch);
         // 3D Stuff
         // A ModelBatch is like a SpriteBatch, just for models. Use it to batch up geometry for OpenGL
         modelBatch = new ModelBatch();
@@ -448,7 +458,9 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
     @Override
     public void resize(int width, int height) {
         arrowJoystick.setPosition(-width / 2 + height / 8, -height / 2 + height / 8);
+        deactivatedArrowJoystick.setPosition(-width / 2 + height / 8, -height / 2 + height / 8);
         hatSwitch.setPosition(width / 2 - hatSwitch.getWidth() - height / 8, -height / 2 + height / 8);
+        deactivatedHatSwitch.setPosition(width / 2 - hatSwitch.getWidth() - height / 8, -height / 2 + height / 8);
     }
 
     @Override
@@ -533,33 +545,28 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                             exService.submit(new AddJointsValuesThread(selectedJoint.getName(), 0f, 0f, hatSwitch.getKnobPercent()));
                         }
                         if (selectedJoint.getName().equals("Head") || selectedJoint.getName().equals("Knee.L") || selectedJoint.getName().equals("Knee.R") || selectedJoint.getName().equals("Shoulder.L") || selectedJoint.getName().equals("Shoulder.R")) {
-                            if (!hasArrowJoystick) {
+                            if (!hasArrowJoystick || hasHatSwitch) {
+                                stage.clear();
+                                stage.addActor(deactivatedHatSwitch);
+                                hasHatSwitch = false;
                                 stage.addActor(arrowJoystick);
                                 hasArrowJoystick = true;
                             }
-                            if (hasHatSwitch) {
-                                stage.clear();
-                                stage.addActor(arrowJoystick);
-                                hasHatSwitch = false;
-                            }
                         }
                         else if(selectedJoint.getName().equals("Wrist.L") || selectedJoint.getName().equals("Wrist.R")) {
-                            if (hasArrowJoystick) {
+                            if (hasArrowJoystick || !hasHatSwitch) {
                                 stage.clear();
-                                stage.addActor(hatSwitch);
+                                stage.addActor(deactivatedArrowJoystick);
                                 hasArrowJoystick = false;
-                            }
-                            if (!hasHatSwitch) {
                                 stage.addActor(hatSwitch);
                                 hasHatSwitch = true;
                             }
                         }
                         else {
-                            if (!hasArrowJoystick) {
+                            if (!hasArrowJoystick || !hasHatSwitch) {
+                                stage.clear();
                                 stage.addActor(arrowJoystick);
                                 hasArrowJoystick = true;
-                            }
-                            if (!hasHatSwitch) {
                                 stage.addActor(hatSwitch);
                                 hasHatSwitch = true;
                             }
@@ -568,7 +575,9 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                     else {
                         if (hasArrowJoystick || hasHatSwitch) {
                             stage.clear();
+                            stage.addActor(deactivatedArrowJoystick);
                             hasArrowJoystick = false;
+                            stage.addActor(deactivatedHatSwitch);
                             hasHatSwitch = false;
                         }
                     }

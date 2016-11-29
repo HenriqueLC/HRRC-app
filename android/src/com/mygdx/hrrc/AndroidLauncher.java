@@ -8,7 +8,6 @@ import android.content.DialogInterface;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Bundle;
-import android.util.Log;
 import android.widget.Toast;
 
 import com.badlogic.gdx.backends.android.AndroidApplication;
@@ -20,7 +19,6 @@ import com.mygdx.hrrc.network.BooleanResultInterface;
 import com.mygdx.hrrc.network.ConnectionTest;
 
 public class AndroidLauncher extends AndroidApplication implements RequestHandler, ProgressDialogRequestHandler, ConnectionTest {
-
 	private ProgressDialog progressDialog;
 
 	@Override

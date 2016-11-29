@@ -14,7 +14,6 @@ import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.InputListener;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.Touchable;
-import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import com.badlogic.gdx.scenes.scene2d.ui.ImageButton;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.utils.GdxRuntimeException;
@@ -36,7 +35,7 @@ class ConnectionScreen extends AbstractScreen {
     private InputListener wifiButtonListener, bluetoothButtonListener;
     private Text instructions; // disposable
     private BooleanResultInterface wifiResultInterface, bluetoothResultInterface;
-    private boolean isWifiOn, isBluetoothOn, hideMessage;
+    private boolean isWifiOn, wifiStateHasChanged, isBluetoothOn, bluetoothStateHasChanged, hideMessage;
     private float elapsedTime;
 
     ConnectionScreen(HRRC humanoidRobotRemoteController) {
@@ -163,11 +162,17 @@ class ConnectionScreen extends AbstractScreen {
         wifiResultInterface = new BooleanResultInterface() {
             @Override
             public void yes() {
+                if (!isWifiOn) {
+                    wifiStateHasChanged = true;
+                }
                 isWifiOn = true;
             }
 
             @Override
             public void no() {
+                if (isWifiOn) {
+                    wifiStateHasChanged = true;
+                }
                 isWifiOn = false;
             }
         };
@@ -175,11 +180,17 @@ class ConnectionScreen extends AbstractScreen {
         bluetoothResultInterface = new BooleanResultInterface() {
             @Override
             public void yes() {
+                if (!isBluetoothOn) {
+                    bluetoothStateHasChanged = true;
+                }
                 isBluetoothOn = true;
             }
 
             @Override
             public void no() {
+                if (isBluetoothOn) {
+                    bluetoothStateHasChanged = true;
+                }
                 isBluetoothOn = false;
             }
         };
@@ -190,16 +201,30 @@ class ConnectionScreen extends AbstractScreen {
         stage.addActor(instructions);
         // Set the input processor
         Gdx.input.setInputProcessor(stage);
+        // Get connection state
+        humanoidRobotRemoteController.connectionTest.isWifiOn(wifiResultInterface);
+        humanoidRobotRemoteController.connectionTest.isBluetoothOn(bluetoothResultInterface);
+        // disable wifi
+        wifiButton.setDisabled(true);
+        wifiButton.setTouchable(Touchable.disabled);
+        // disable bluetooth
+        bluetoothButton.setDisabled(true);
+        bluetoothButton.setTouchable(Touchable.disabled);
+        // Set the appropriated instructions
+        instructions.setMessage("Enable Wifi and/or Bluetooth");
     }
 
     @Override
     public void resize(int width, int height) {
         // Place the wifi button in the left-middle of the screen
-        wifiButton.setX((width - wifiButton.getWidth()) / 2 - width / 4);
+        wifiButton.setX((width - wifiButton.getWidth()) / 2 - 11 * width / 50);
         wifiButton.setY((height - wifiButton.getHeight()) / 2);
         // Place the bluetooth button in the right-middle of the screen
-        bluetoothButton.setX((width - bluetoothButton.getWidth()) / 2 + width / 4);
+        bluetoothButton.setX((width - bluetoothButton.getWidth()) / 2 + 11 * width / 50);
         bluetoothButton.setY((height - bluetoothButton.getHeight()) / 2);
+        // Place the instructions in the bottom of the screen
+        instructions.setX((Gdx.graphics.getWidth() - instructions.getWidth()) / 2);
+        instructions.setY((Gdx.graphics.getHeight() - instructions.getHeight()) / 2 - 7 * Gdx.graphics.getHeight() / 20);
     }
 
     @Override
@@ -215,40 +240,51 @@ class ConnectionScreen extends AbstractScreen {
         // Check if wifi and/or bluetooth are/is on
         humanoidRobotRemoteController.connectionTest.isWifiOn(wifiResultInterface);
         humanoidRobotRemoteController.connectionTest.isBluetoothOn(bluetoothResultInterface);
-        // Enable/disable wifi
-        wifiButton.setDisabled(!isWifiOn);
-        if (isWifiOn) {
-            wifiButton.setTouchable(Touchable.enabled);
-        }
-        else {
-            wifiButton.setTouchable(Touchable.disabled);
-        }
-        // Enable/disable bluetooth
-        bluetoothButton.setDisabled(!isBluetoothOn);
-        if (isBluetoothOn) {
-            bluetoothButton.setTouchable(Touchable.enabled);
-        }
-        else {
-            bluetoothButton.setTouchable(Touchable.disabled);
-        }
-        // Set the appropriated instructions
-        if (isWifiOn && isBluetoothOn) {
-            instructions.setMessage("Choose the connection type");
-        }
-        else {
+        // if wifi state has changed
+        if (wifiStateHasChanged) {
+            // Enable/disable wifi
+            wifiButton.setDisabled(!isWifiOn);
             if (isWifiOn) {
-                instructions.setMessage("Choose Wifi or enable Bluetooth");
-            }
-            else if (isBluetoothOn) {
-                instructions.setMessage("Choose Bluetooth or enable Wifi");
+                wifiButton.setTouchable(Touchable.enabled);
             }
             else {
-                instructions.setMessage("Enable Wifi and/or Bluetooth");
+                wifiButton.setTouchable(Touchable.disabled);
             }
         }
-        // Place the instructions in the bottom of the screen
-        instructions.setX((Gdx.graphics.getWidth() - instructions.getWidth()) / 2);
-        instructions.setY((Gdx.graphics.getHeight() - instructions.getHeight()) / 2 - 2 * Gdx.graphics.getHeight() / 6);
+        // if bluetooth state has changed
+        if (bluetoothStateHasChanged) {
+            // Enable/disable bluetooth
+            bluetoothButton.setDisabled(!isBluetoothOn);
+            if (isBluetoothOn) {
+                bluetoothButton.setTouchable(Touchable.enabled);
+            }
+            else {
+                bluetoothButton.setTouchable(Touchable.disabled);
+            }
+        }
+        // if any state has changed
+        if (wifiStateHasChanged || bluetoothStateHasChanged) {
+            // Set the appropriated instructions
+            if (isWifiOn && isBluetoothOn) {
+                instructions.setMessage("Choose the connection type");
+            }
+            else {
+                if (isWifiOn) {
+                    instructions.setMessage("Choose Wifi or enable Bluetooth");
+                }
+                else if (isBluetoothOn) {
+                    instructions.setMessage("Choose Bluetooth or enable Wifi");
+                }
+                else {
+                    instructions.setMessage("Enable Wifi and/or Bluetooth");
+                }
+            }
+            // Place the new instructions in the bottom of the screen
+            instructions.setX((Gdx.graphics.getWidth() - instructions.getWidth()) / 2);
+            instructions.setY((Gdx.graphics.getHeight() - instructions.getHeight()) / 2 - 7 * Gdx.graphics.getHeight() / 20);
+        }
+        wifiStateHasChanged = false;
+        bluetoothStateHasChanged = false;
         // Blink the instruction message
         if (!hideMessage) {
             elapsedTime += delta;

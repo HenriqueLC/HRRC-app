@@ -241,11 +241,11 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                             // Head update
                             setEulerAngles("Head", nodes[0], nodes[1], 0f);
                             // Left leg update
-                            setEulerAngles("Hip.L", -nodes[2], -nodes[3], -nodes[4]);
+                            setEulerAngles("Hip.L", -nodes[2], -nodes[4], -nodes[3]);
                             setEulerAngles("Knee.L", 0f, nodes[5], 0f);
                             setEulerAngles("Ankle.L", 0f, nodes[6], -nodes[7]);
                             // Right leg update
-                            setEulerAngles("Hip.R", nodes[8], -nodes[9], -nodes[10]);
+                            setEulerAngles("Hip.R", nodes[8], -nodes[10], -nodes[9]);
                             setEulerAngles("Knee.R", 0f, nodes[11], 0f);
                             setEulerAngles("Ankle.R", 0f, nodes[12], -nodes[13]);
                             // Left arm update
@@ -257,7 +257,8 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                             setEulerAngles("Elbow.R", nodes[21], nodes[22], 0f);
                             setEulerAngles("Wrist.R", nodes[23], 0f, 0f);
                             calculateTransforms = true;
-                        } else {
+                        }
+                        else {
                             connectionEnded = true;
                         }
                     } catch (IOException e) {

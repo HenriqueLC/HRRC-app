@@ -8,6 +8,8 @@ import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.PerspectiveCamera;
+import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.badlogic.gdx.graphics.g2d.TextureAtlas;
 import com.badlogic.gdx.graphics.g3d.Environment;
@@ -22,19 +24,23 @@ import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.math.collision.Ray;
 import com.badlogic.gdx.net.Socket;
 import com.badlogic.gdx.net.SocketHints;
+import com.badlogic.gdx.scenes.scene2d.InputEvent;
+import com.badlogic.gdx.scenes.scene2d.InputListener;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
+import com.badlogic.gdx.scenes.scene2d.ui.ImageButton;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Touchpad;
 import com.badlogic.gdx.scenes.scene2d.utils.Drawable;
+import com.badlogic.gdx.scenes.scene2d.utils.SpriteDrawable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.mygdx.hrrc.HRRC;
 import com.mygdx.hrrc.screen.util.HatSwitch;
 
-import java.io.BufferedReader;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -46,6 +52,10 @@ import static com.badlogic.gdx.graphics.GL20.GL_ONE_MINUS_SRC_ALPHA;
 class ControllerScreen extends AbstractScreen implements InputProcessor {
 
     private Stage stage;
+    private ImageButton locker;
+    private boolean locked;
+    private Image display;
+    private Pixmap pixmap;
     private Touchpad arrowJoystick;
     private Image deactivatedArrowJoystick;
     private HatSwitch hatSwitch;
@@ -105,8 +115,8 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
     private Environment environment;
     private PerspectiveCamera camera3D;
     private Socket socket; // disposable
-    private PrintWriter out;
-    private BufferedReader in;
+    private DataOutputStream dataOutputStream;
+    private DataInputStream dataInputStream;
     private ExecutorService exService;
     private boolean connectionEnded;
     private boolean calculateTransforms;
@@ -204,11 +214,39 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
     }
 
     private class AddJointsValuesThread implements Runnable {
-        private String jointID;
+        private int command;
         private float yaw, pitch, roll;
 
         AddJointsValuesThread(String jointID, float yaw, float pitch, float roll) {
-            this.jointID = jointID;
+            int command = -1;
+            if (jointID.equals("Head")) {
+                command = 0;
+            } else if (jointID.equals("Hip.L")) {
+                command = 1;
+            } else if (jointID.equals("Knee.L")) {
+                command = 2;
+            } else if (jointID.equals("Ankle.L")) {
+                command = 3;
+            } else if (jointID.equals("Hip.R")) {
+                command = 4;
+            } else if (jointID.equals("Knee.R")) {
+                command = 5;
+            } else if (jointID.equals("Ankle.R")) {
+                command = 6;
+            } else if (jointID.equals("Shoulder.L")) {
+                command = 7;
+            } else if (jointID.equals("Elbow.L")) {
+                command = 8;
+            } else if (jointID.equals("Wrist.L")) {
+                command = 9;
+            } else if (jointID.equals("Shoulder.R")) {
+                command = 10;
+            } else if (jointID.equals("Elbow.R")) {
+                command = 11;
+            } else if (jointID.equals("Wrist.R")) {
+                command = 12;
+            }
+            this.command = command;
             this.yaw = yaw;
             this.pitch = pitch;
             this.roll = roll;
@@ -216,50 +254,70 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
 
         @Override
         public void run() {
-            out.println("addJointValue," + jointID + "," + Float.toString(yaw) + "," + Float.toString(pitch) + "," + Float.toString(roll));
+            try {
+                // command
+                dataOutputStream.writeInt(2);
+                // joint id
+                dataOutputStream.writeInt(command);
+                // yaw, pitch, roll
+                byte[] yawPitchRoll = new byte[12];
+                byte[] yawBytes = ByteBuffer.allocate(4).putFloat(yaw).array();
+                System.arraycopy(yawBytes, 0, yawPitchRoll, 0, 4);
+                byte[] pitchBytes = ByteBuffer.allocate(4).putFloat(pitch).array();
+                System.arraycopy(pitchBytes, 0, yawPitchRoll, 4, 4);
+                byte[] rollBytes = ByteBuffer.allocate(4).putFloat(roll).array();
+                System.arraycopy(rollBytes, 0, yawPitchRoll, 8, 4);
+                dataOutputStream.write(yawPitchRoll);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 
-    private class GetJointsValuesThread implements Runnable {
+    private class GetJointAnglesImagePixelsThread implements Runnable {
         @Override
         public void run() {
             if (lock.tryLock()) {
                 // Got the lock
                 try {
-                    // Send the command "getUpdatedJoints"
-                    out.println("getUpdatedJoints");
-                    // Wait for the connection response
                     try {
-                        String response = in.readLine();
-                        if (response != null) {
-                            // Convert the response string into a float array
-                            String[] tabOfFloats = response.split(",");
-                            float[] nodes = new float[tabOfFloats.length];
-                            for (int i = 0; i < tabOfFloats.length; i++) {
-                                nodes[i] = Float.parseFloat(tabOfFloats[i]);
-                            }
-                            // Head update
-                            setEulerAngles("Head", nodes[0], nodes[1], 0f);
-                            // Left leg update
-                            setEulerAngles("Hip.L", -nodes[2], -nodes[4], -nodes[3]);
-                            setEulerAngles("Knee.L", 0f, nodes[5], 0f);
-                            setEulerAngles("Ankle.L", 0f, nodes[6], -nodes[7]);
-                            // Right leg update
-                            setEulerAngles("Hip.R", nodes[8], -nodes[10], -nodes[9]);
-                            setEulerAngles("Knee.R", 0f, nodes[11], 0f);
-                            setEulerAngles("Ankle.R", 0f, nodes[12], -nodes[13]);
-                            // Left arm update
-                            setEulerAngles("Shoulder.L", nodes[14], -nodes[15], 0f);
-                            setEulerAngles("Elbow.L", nodes[16], -nodes[17], 0f);
-                            setEulerAngles("Wrist.L", nodes[18], 0f, 0f);
-                            // Right arm update
-                            setEulerAngles("Shoulder.R", -nodes[19], nodes[20], 0f);
-                            setEulerAngles("Elbow.R", nodes[21], nodes[22], 0f);
-                            setEulerAngles("Wrist.R", nodes[23], 0f, 0f);
-                            calculateTransforms = true;
+                        // Send the command "get joints and vision sensor"
+                        dataOutputStream.writeInt(1);
+                        // Wait for the connection response
+                        byte[] bytes = new byte[104 + 38400];
+                        dataInputStream.readFully(bytes);
+                        // Convert the bytes stream into a float array
+                        float[] nodes = new float[26];
+                        for (int i = 0; i < 26; i++) {
+                            nodes[i] = ByteBuffer.wrap(bytes, 4 * i, 4).getFloat();
                         }
-                        else {
-                            connectionEnded = true;
+                        // Head update
+                        setEulerAngles("Head", nodes[0], nodes[1], 0f);
+                        // Left leg update
+                        setEulerAngles("Hip.L", -nodes[2], -nodes[4], -nodes[3]);
+                        setEulerAngles("Knee.L", 0f, nodes[5], 0f);
+                        setEulerAngles("Ankle.L", 0f, nodes[6], -nodes[7]);
+                        // Right leg update
+                        setEulerAngles("Hip.R", nodes[8], -nodes[10], -nodes[9]);
+                        setEulerAngles("Knee.R", 0f, nodes[11], 0f);
+                        setEulerAngles("Ankle.R", 0f, nodes[12], -nodes[13]);
+                        // Left arm update
+                        setEulerAngles("Shoulder.L", nodes[14], -nodes[15], 0f);
+                        setEulerAngles("Elbow.L", nodes[16], -nodes[17], 0f);
+                        setEulerAngles("Wrist.L", nodes[18], 0f, 0f);
+                        // Right arm update
+                        setEulerAngles("Shoulder.R", -nodes[19], nodes[20], 0f);
+                        setEulerAngles("Elbow.R", nodes[21], nodes[22], 0f);
+                        setEulerAngles("Wrist.R", nodes[23], 0f, 0f);
+                        setEulerAngles("spine", -nodes[24], -nodes[25], 0f);
+                        calculateTransforms = true;
+                        // Pixels
+                        pixmap = new Pixmap(160, 120, Pixmap.Format.Intensity);
+                        for (int i = 0; i < 120; i++) {
+                            for (int j = 0; j < 160; j++) {
+                                int color = ByteBuffer.wrap(bytes, 104 + 2 * (160 * i + j), 2).getChar();
+                                pixmap.drawPixel(j, 120 - i, color);
+                            }
                         }
                     } catch (IOException e) {
                         connectionEnded = true;
@@ -277,6 +335,52 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
         // 2D stuff
         stage = new Stage();
         TextureAtlas textureAtlas = humanoidRobotRemoteController.assetManager.get("data/controller.pack", TextureAtlas.class);
+        // Locker
+        final Skin skin = new Skin();
+        skin.addRegions(textureAtlas);
+        // Wifi button
+        final ImageButton.ImageButtonStyle lockerButtonStyle = new ImageButton.ImageButtonStyle();
+        if (!locked) {
+            lockerButtonStyle.up = skin.getDrawable("opened");
+            lockerButtonStyle.down = skin.getDrawable("opened");
+        }
+        else {
+            lockerButtonStyle.up = skin.getDrawable("closed");
+            lockerButtonStyle.down = skin.getDrawable("closed");
+        }
+        locker = new ImageButton(lockerButtonStyle);
+        stage.addActor(locker);
+        InputListener lockerListener = new InputListener() {
+            public boolean touchDown(InputEvent event, float x, float y, int pointer, int button) {
+                return true;
+            }
+
+            public void touchUp(InputEvent event, float x, float y, int pointer, int button) {
+                locked = !locked;
+                if (!locked) {
+                    lockerButtonStyle.up = skin.getDrawable("opened");
+                    lockerButtonStyle.down = skin.getDrawable("opened");
+                }
+                else {
+                    lockerButtonStyle.up = skin.getDrawable("closed");
+                    lockerButtonStyle.down = skin.getDrawable("closed");
+                }
+            }
+        };
+        locker.addListener(lockerListener);
+        // display
+        pixmap = new Pixmap(160, 120, Pixmap.Format.Intensity);
+        for (int i = 0; i < 160; i++) {
+            for (int j = 0; j < 120; j++) {
+                pixmap.drawPixel(j, i, 128);
+            }
+        }
+        display = new Image(new Texture(pixmap));
+        stage.addActor(display);
+        if (pixmap != null) {
+            pixmap.dispose();
+            pixmap = null;
+        }
         // Arrow Joystick
         Skin arrowJoystickSkin = new Skin();
         Sprite arrowJoystickBackground = new Sprite(textureAtlas.findRegion("joystick-background"));
@@ -446,8 +550,8 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
         OrthographicCamera camera2D = new OrthographicCamera(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         stage.getViewport().setCamera(camera2D);
         // Connection stuff
-        out = new PrintWriter(socket.getOutputStream(), true);
-        in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        dataOutputStream = new DataOutputStream(socket.getOutputStream());
+        dataInputStream = new DataInputStream(socket.getInputStream());
         // Set Input processor
         Gdx.input.setInputProcessor(new InputMultiplexer(stage, this));
         // Communication thread
@@ -458,10 +562,12 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
 
     @Override
     public void resize(int width, int height) {
+        locker.setPosition(width / 2 - locker.getWidth() / 2 - hatSwitch.getWidth() / 2 - height / 8, 3 * height / 8 - locker.getHeight());
+        display.setPosition(-width / 2 - display.getWidth() / 2 + arrowJoystick.getWidth() / 2 + height / 8, 3 * height / 8 - display.getHeight());
         arrowJoystick.setPosition(-width / 2 + height / 8, -height / 2 + height / 8);
         deactivatedArrowJoystick.setPosition(-width / 2 + height / 8, -height / 2 + height / 8);
         hatSwitch.setPosition(width / 2 - hatSwitch.getWidth() - height / 8, -height / 2 + height / 8);
-        deactivatedHatSwitch.setPosition(width / 2 - hatSwitch.getWidth() - height / 8, -height / 2 + height / 8);
+        deactivatedHatSwitch.setPosition(width / 2 - hatSwitch.getWidth() - height / 8, -3 * height / 8);
     }
 
     @Override
@@ -473,21 +579,21 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
         humanoidRobotRemoteController.progressDialogRequestHandler.show("Progress dialog", "Trying to reconnect to " + ip + " ...", false, false);
         SocketHints socketHints = new SocketHints();
         // Socket will time our in 5 seconds
+        socketHints.connectTimeout = 5000;
         socketHints.socketTimeout = 5000;
         if (!socket.isConnected()) {
             try {
                 // Create the socket and try to connect to the server entered in the text box ( x.x.x.x format ) on port 20000
                 socket = Gdx.net.newClientSocket(Net.Protocol.TCP, ip, 20000, socketHints);
                 // Get the output and input TCP interfaces
-                out = new PrintWriter(socket.getOutputStream(), true);
-                in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                // Send the command "connect"
-                String command = "connect";
-                out.println(command);
+                dataOutputStream = new DataOutputStream(socket.getOutputStream());
+                dataInputStream = new DataInputStream(socket.getInputStream());
                 try {
+                    // Send the command "connect"
+                    dataOutputStream.writeInt(0);
                     // Wait for the connection response
-                    String response = in.readLine();
-                    if (Boolean.valueOf(response)) {
+                    boolean connection = dataInputStream.readBoolean();
+                    if (connection) {
                         // Dismiss progress dialog
                         humanoidRobotRemoteController.progressDialogRequestHandler.dismiss();
                         humanoidRobotRemoteController.requestHandler.toast("Successfully reconnected");
@@ -495,7 +601,7 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                     else {
                         connectionEnded = true;
                     }
-                } catch (IOException e ) {
+                } catch (IOException e) {
                     connectionEnded = true;
                 }
             } catch (GdxRuntimeException e) {
@@ -530,59 +636,70 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                             }
                             calculateTransforms = false;
                         }
+                        if (pixmap != null) {
+                            display.setDrawable(new SpriteDrawable(new Sprite(new Texture(pixmap))));
+                            pixmap.dispose();
+                            pixmap = null;
+                        }
                     } finally {
                         // Make sure to unlock so that we don't cause a deadlock
                         lock.unlock();
-                        exService.submit(new GetJointsValuesThread());
+                        exService.submit(new GetJointAnglesImagePixelsThread());
                     }
                 }
-                count++;
-                if (count >= 2) {
-                    if (selectedJoint != null) {
-                        if (arrowJoystick.isTouched()) {
-                            exService.submit(new AddJointsValuesThread(selectedJoint.getName(), arrowJoystick.getKnobPercentX(), arrowJoystick.getKnobPercentY(), 0f));
-                        }
-                        if (hatSwitch.isTouched()) {
-                            exService.submit(new AddJointsValuesThread(selectedJoint.getName(), 0f, 0f, hatSwitch.getKnobPercent()));
-                        }
-                        if (selectedJoint.getName().equals("Head") || selectedJoint.getName().equals("Knee.L") || selectedJoint.getName().equals("Knee.R") || selectedJoint.getName().equals("Shoulder.L") || selectedJoint.getName().equals("Shoulder.R")) {
-                            if (!hasArrowJoystick || hasHatSwitch) {
-                                stage.clear();
-                                stage.addActor(deactivatedHatSwitch);
-                                hasHatSwitch = false;
-                                stage.addActor(arrowJoystick);
-                                hasArrowJoystick = true;
+                if (!locked) {
+                    count++;
+                    if (count >= 2) {
+                        if (selectedJoint != null) {
+                            if (arrowJoystick.isTouched()) {
+                                exService.submit(new AddJointsValuesThread(selectedJoint.getName(), arrowJoystick.getKnobPercentX(), arrowJoystick.getKnobPercentY(), 0f));
                             }
-                        }
-                        else if(selectedJoint.getName().equals("Wrist.L") || selectedJoint.getName().equals("Wrist.R")) {
-                            if (hasArrowJoystick || !hasHatSwitch) {
+                            if (hatSwitch.isTouched()) {
+                                exService.submit(new AddJointsValuesThread(selectedJoint.getName(), 0f, 0f, hatSwitch.getKnobPercent()));
+                            }
+                            if (selectedJoint.getName().equals("Head") || selectedJoint.getName().equals("Knee.L") || selectedJoint.getName().equals("Knee.R") || selectedJoint.getName().equals("Shoulder.L") || selectedJoint.getName().equals("Shoulder.R")) {
+                                if (!hasArrowJoystick || hasHatSwitch) {
+                                    stage.clear();
+                                    stage.addActor(locker);
+                                    stage.addActor(display);
+                                    stage.addActor(deactivatedHatSwitch);
+                                    hasHatSwitch = false;
+                                    stage.addActor(arrowJoystick);
+                                    hasArrowJoystick = true;
+                                }
+                            } else if (selectedJoint.getName().equals("Wrist.L") || selectedJoint.getName().equals("Wrist.R")) {
+                                if (hasArrowJoystick || !hasHatSwitch) {
+                                    stage.clear();
+                                    stage.addActor(locker);
+                                    stage.addActor(display);
+                                    stage.addActor(deactivatedArrowJoystick);
+                                    hasArrowJoystick = false;
+                                    stage.addActor(hatSwitch);
+                                    hasHatSwitch = true;
+                                }
+                            } else {
+                                if (!hasArrowJoystick || !hasHatSwitch) {
+                                    stage.clear();
+                                    stage.addActor(locker);
+                                    stage.addActor(display);
+                                    stage.addActor(arrowJoystick);
+                                    hasArrowJoystick = true;
+                                    stage.addActor(hatSwitch);
+                                    hasHatSwitch = true;
+                                }
+                            }
+                        } else {
+                            if (hasArrowJoystick || hasHatSwitch) {
                                 stage.clear();
+                                stage.addActor(display);
                                 stage.addActor(deactivatedArrowJoystick);
                                 hasArrowJoystick = false;
-                                stage.addActor(hatSwitch);
-                                hasHatSwitch = true;
+                                stage.addActor(deactivatedHatSwitch);
+                                hasHatSwitch = false;
                             }
                         }
-                        else {
-                            if (!hasArrowJoystick || !hasHatSwitch) {
-                                stage.clear();
-                                stage.addActor(arrowJoystick);
-                                hasArrowJoystick = true;
-                                stage.addActor(hatSwitch);
-                                hasHatSwitch = true;
-                            }
-                        }
+                        count = 0;
                     }
-                    else {
-                        if (hasArrowJoystick || hasHatSwitch) {
-                            stage.clear();
-                            stage.addActor(deactivatedArrowJoystick);
-                            hasArrowJoystick = false;
-                            stage.addActor(deactivatedHatSwitch);
-                            hasHatSwitch = false;
-                        }
-                    }
-                    count = 0;
                 }
                 elapsedTime = 0f;
             }
@@ -610,6 +727,10 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
         preferences.putString("ip", socket.getRemoteAddress().split(":")[0].substring(1));
         preferences.flush();
         socket.dispose();
+        if (pixmap != null) {
+            pixmap.dispose();
+            pixmap = null;
+        }
     }
 
     @Override

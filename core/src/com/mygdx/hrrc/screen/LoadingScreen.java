@@ -112,8 +112,6 @@ public class LoadingScreen extends AbstractScreen {
         humanoidRobotRemoteController.assetManager.load("data/yawPitchPitchRollLeft.g3db", Model.class);
         humanoidRobotRemoteController.assetManager.load("data/yawPitchPitchRollRight.g3db", Model.class);
         humanoidRobotRemoteController.assetManager.load("data/rollPitch.g3db", Model.class);
-        // game.manager.load("data/assets2.pack", TextureAtlas.class);
-        // game.manager.load("data/assets3.pack", TextureAtlas.class);
     }
 
     @Override

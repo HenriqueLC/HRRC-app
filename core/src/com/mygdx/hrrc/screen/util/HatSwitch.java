@@ -38,10 +38,10 @@ public class HatSwitch extends Widget {
             screenX += origin.x;
             screenY += origin.y;
             double alpha;
-            if (screenX - centerX > 0) {
+            if (screenX - centerX >= 0) {
                 alpha = PI / 2;
             }
-            else if (screenY - centerY < 0) {
+            else if (screenY - centerY <= 0) {
                 alpha = 0;
             }
             else {

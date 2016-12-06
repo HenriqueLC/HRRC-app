@@ -23,16 +23,19 @@ import com.mygdx.hrrc.network.BooleanResultInterface;
 import com.mygdx.hrrc.screen.util.Text;
 
 import java.io.BufferedReader;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.nio.ByteBuffer;
 
 class ConnectionScreen extends AbstractScreen {
 
     private ConnectionScreen connectionScreen;
     private Stage stage; // disposable
     private ImageButton wifiButton, bluetoothButton; // disposable
-    private InputListener wifiButtonListener, bluetoothButtonListener;
+    private InputListener bluetoothButtonListener;
     private Text instructions; // disposable
     private BooleanResultInterface wifiResultInterface, bluetoothResultInterface;
     private boolean isWifiOn, wifiStateHasChanged, isBluetoothOn, bluetoothStateHasChanged, hideMessage;
@@ -59,7 +62,7 @@ class ConnectionScreen extends AbstractScreen {
         wifiButton = new ImageButton(wifiButtonStyle);
         stage.addActor(wifiButton);
         // Wifi button event listener
-        wifiButtonListener = new InputListener() {
+        InputListener wifiButtonListener = new InputListener() {
             public boolean touchDown(InputEvent event, float x, float y, int pointer, int button) {
                 return true;
             }
@@ -82,23 +85,21 @@ class ConnectionScreen extends AbstractScreen {
                                     // Create the socket and try to connect to the server entered in the text box ( x.x.x.x format ) on port 20000
                                     Socket socket = Gdx.net.newClientSocket(Net.Protocol.TCP, text, 20000, socketHints);
                                     // Get the output and input TCP interfaces
-                                    PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-                                    BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                                    // Send the command "connect"
-                                    String command = "connect";
-                                    out.println(command);
+                                    DataOutputStream dataOutputStream = new DataOutputStream(socket.getOutputStream());
+                                    DataInputStream dataInputStream = new DataInputStream(socket.getInputStream());
                                     try {
+                                        // Send the command "connect"
+                                        dataOutputStream.writeInt(0);
                                         // Wait for the connection response
-                                        String response = in.readLine();
-                                        if (Boolean.valueOf(response)) {
+                                        boolean connection = dataInputStream.readBoolean();
+                                        if (connection) {
                                             // Dismiss progress dialog
                                             humanoidRobotRemoteController.progressDialogRequestHandler.dismiss();
                                             humanoidRobotRemoteController.requestHandler.toast("Successfully connected");
                                             // Set screen
                                             humanoidRobotRemoteController.setScreen(new ControllerScreen(humanoidRobotRemoteController, socket));
                                             connectionScreen.dispose();
-                                        }
-                                        else {
+                                        } else {
                                             // Dismiss progress dialog
                                             humanoidRobotRemoteController.progressDialogRequestHandler.dismiss();
                                             humanoidRobotRemoteController.requestHandler.toast("Server wasn't able to connect to the simulation");

@@ -31,16 +31,58 @@ joystick-deactivated
   orig: 256, 256
   offset: 0, 0
   index: -1
-hat-switch-knob
+button1-deactivated
   rotate: false
   xy: 323, 581
   size: 128, 128
   orig: 128, 128
   offset: 0, 0
   index: -1
-joystick-knob
+button2-deactivated
+  rotate: false
+  xy: 323, 581
+  size: 128, 128
+  orig: 128, 128
+  offset: 0, 0
+  index: -1
+button3-deactivated
+  rotate: false
+  xy: 323, 581
+  size: 128, 128
+  orig: 128, 128
+  offset: 0, 0
+  index: -1
+button1
   rotate: false
   xy: 581, 839
+  size: 128, 128
+  orig: 128, 128
+  offset: 0, 0
+  index: -1
+button2
+  rotate: false
+  xy: 581, 839
+  size: 128, 128
+  orig: 128, 128
+  offset: 0, 0
+  index: -1
+button3
+  rotate: false
+  xy: 581, 839
+  size: 128, 128
+  orig: 128, 128
+  offset: 0, 0
+  index: -1
+hat-switch-knob
+  rotate: false
+  xy: 323, 451
+  size: 128, 128
+  orig: 128, 128
+  offset: 0, 0
+  index: -1
+joystick-knob
+  rotate: false
+  xy: 711, 839
   size: 128, 128
   orig: 128, 128
   offset: 0, 0
@@ -54,7 +96,7 @@ closed
   index: -1
 opened
   rotate: false
-  xy: 323, 515
+  xy: 453, 645
   size: 64, 64
   orig: 64, 64
   offset: 0, 0

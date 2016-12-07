@@ -53,11 +53,12 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
 
     private Stage stage;
     private ImageButton locker;
-    private boolean locked;
+    private boolean unlocked;
     private Image display;
     private Pixmap pixmap;
-    private Touchpad arrowJoystick;
-    private Image deactivatedArrowJoystick;
+    private ImageButton button1, button2, button3;
+    private Touchpad arrowJoystick, arrowJoystickJoints;
+    private Image deactivatedArrowJoystickJoints;
     private HatSwitch hatSwitch;
     private Image deactivatedHatSwitch;
     private boolean hasArrowJoystick, hasHatSwitch;
@@ -160,20 +161,22 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
 
     @Override
     public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-        Joint newSelectedJoint = getJoint(screenX, screenY);
-        if (newSelectedJoint != null) {
-            if (selectedJoint != null) {
-                selectedJoint.getSphere().materials.first().set(new BlendingAttribute(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA, 0f));
+        if (unlocked) {
+            Joint newSelectedJoint = getJoint(screenX, screenY);
+            if (newSelectedJoint != null) {
+                if (selectedJoint != null) {
+                    selectedJoint.getSphere().materials.first().set(new BlendingAttribute(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA, 0f));
+                }
+                if (newSelectedJoint != selectedJoint) {
+                    newSelectedJoint.getSphere().materials.first().set(new BlendingAttribute(false, 0.5f));
+                    selectedJoint = newSelectedJoint;
+                } else {
+                    selectedJoint = null;
+                }
             }
-            if (newSelectedJoint != selectedJoint) {
-                newSelectedJoint.getSphere().materials.first().set(new BlendingAttribute(false, 0.5f));
-                selectedJoint = newSelectedJoint;
-            }
-            else {
-                selectedJoint = null;
-            }
+            return true;
         }
-        return true;
+        return false;
     }
 
     @Override
@@ -211,6 +214,106 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
             );
         }
         robot.getNode(nodeId).rotation.setEulerAngles(defaultRotationValues.get(nodeId).getYaw() + yaw, defaultRotationValues.get(nodeId).getPitch() + pitch, defaultRotationValues.get(nodeId).getRoll() + roll);
+    }
+
+    private class GetJointAnglesImagePixelsThread implements Runnable {
+        @Override
+        public void run() {
+            if (lock.tryLock()) {
+                // Got the lock
+                try {
+                    try {
+                        // Send the command "get joints and vision sensor"
+                        dataOutputStream.writeInt(1);
+                        // Wait for the connection response
+                        byte[] bytes = new byte[112 + 38400];
+                        dataInputStream.readFully(bytes);
+                        // Convert the bytes stream into a float array
+                        float[] nodes = new float[26];
+                        for (int i = 0; i < 26; i++) {
+                            nodes[i] = ByteBuffer.wrap(bytes, 4 * i, 4).getFloat();
+                        }
+                        float zLeft = ByteBuffer.wrap(bytes, 104, 4).getFloat();
+                        float zRight = ByteBuffer.wrap(bytes, 108, 4).getFloat();
+                        float z = (zLeft + zRight) / 2 - 14.2f;
+                        robot.transform.setTranslation(0, z, 0);
+                        // Head update
+                        setEulerAngles("Head", nodes[0], nodes[1], 0f);
+                        // Left leg update
+                        setEulerAngles("Hip.L", -nodes[2], -nodes[4], -nodes[3]);
+                        setEulerAngles("Knee.L", 0f, nodes[5], 0f);
+                        setEulerAngles("Ankle.L", 0f, nodes[6], -nodes[7]);
+                        // Right leg update
+                        setEulerAngles("Hip.R", nodes[8], -nodes[10], -nodes[9]);
+                        setEulerAngles("Knee.R", 0f, nodes[11], 0f);
+                        setEulerAngles("Ankle.R", 0f, nodes[12], -nodes[13]);
+                        // Left arm update
+                        setEulerAngles("Shoulder.L", nodes[14], -nodes[15], 0f);
+                        setEulerAngles("Elbow.L", nodes[16], -nodes[17], 0f);
+                        setEulerAngles("Wrist.L", nodes[18], 0f, 0f);
+                        // Right arm update
+                        setEulerAngles("Shoulder.R", -nodes[19], nodes[20], 0f);
+                        setEulerAngles("Elbow.R", nodes[21], nodes[22], 0f);
+                        setEulerAngles("Wrist.R", nodes[23], 0f, 0f);
+                        setEulerAngles("spine", -nodes[24], -nodes[25], 0f);
+                        calculateTransforms = true;
+                        // Pixels
+                        pixmap = new Pixmap(160, 120, Pixmap.Format.Intensity);
+                        for (int i = 0; i < 120; i++) {
+                            for (int j = 0; j < 160; j++) {
+                                int color = ByteBuffer.wrap(bytes, 112 + 2 * (160 * i + j), 2).getChar();
+                                pixmap.drawPixel(j, 120 - i, color);
+                            }
+                        }
+                    } catch (IOException e) {
+                        connectionEnded = true;
+                    }
+                } finally {
+                    // Make sure to unlock so that we don't cause a deadlock
+                    lock.unlock();
+                }
+            }
+        }
+    }
+
+    private class WalkTurnThread implements Runnable {
+        private float x, y, theta;
+
+        WalkTurnThread(float x, float y, float theta) {
+            this.x = x;
+            this.y = y;
+            this.theta = theta;
+        }
+
+        @Override
+        public void run() {
+            try {
+                dataOutputStream.writeInt(2);
+                dataOutputStream.writeFloat(x);
+                dataOutputStream.writeFloat(y);
+                dataOutputStream.writeFloat(theta);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private class GoToPosture implements Runnable {
+        private int posture;
+
+        GoToPosture(int posture) {
+            this.posture = posture;
+        }
+
+        @Override
+        public void run() {
+            try {
+                dataOutputStream.writeInt(3);
+                dataOutputStream.writeInt(posture);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     private class AddJointsValuesThread implements Runnable {
@@ -256,76 +359,15 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
         public void run() {
             try {
                 // command
-                dataOutputStream.writeInt(2);
+                dataOutputStream.writeInt(4);
                 // joint id
                 dataOutputStream.writeInt(command);
                 // yaw, pitch, roll
-                byte[] yawPitchRoll = new byte[12];
-                byte[] yawBytes = ByteBuffer.allocate(4).putFloat(yaw).array();
-                System.arraycopy(yawBytes, 0, yawPitchRoll, 0, 4);
-                byte[] pitchBytes = ByteBuffer.allocate(4).putFloat(pitch).array();
-                System.arraycopy(pitchBytes, 0, yawPitchRoll, 4, 4);
-                byte[] rollBytes = ByteBuffer.allocate(4).putFloat(roll).array();
-                System.arraycopy(rollBytes, 0, yawPitchRoll, 8, 4);
-                dataOutputStream.write(yawPitchRoll);
+                dataOutputStream.writeFloat(yaw);
+                dataOutputStream.writeFloat(pitch);
+                dataOutputStream.writeFloat(roll);
             } catch (IOException e) {
                 e.printStackTrace();
-            }
-        }
-    }
-
-    private class GetJointAnglesImagePixelsThread implements Runnable {
-        @Override
-        public void run() {
-            if (lock.tryLock()) {
-                // Got the lock
-                try {
-                    try {
-                        // Send the command "get joints and vision sensor"
-                        dataOutputStream.writeInt(1);
-                        // Wait for the connection response
-                        byte[] bytes = new byte[104 + 38400];
-                        dataInputStream.readFully(bytes);
-                        // Convert the bytes stream into a float array
-                        float[] nodes = new float[26];
-                        for (int i = 0; i < 26; i++) {
-                            nodes[i] = ByteBuffer.wrap(bytes, 4 * i, 4).getFloat();
-                        }
-                        // Head update
-                        setEulerAngles("Head", nodes[0], nodes[1], 0f);
-                        // Left leg update
-                        setEulerAngles("Hip.L", -nodes[2], -nodes[4], -nodes[3]);
-                        setEulerAngles("Knee.L", 0f, nodes[5], 0f);
-                        setEulerAngles("Ankle.L", 0f, nodes[6], -nodes[7]);
-                        // Right leg update
-                        setEulerAngles("Hip.R", nodes[8], -nodes[10], -nodes[9]);
-                        setEulerAngles("Knee.R", 0f, nodes[11], 0f);
-                        setEulerAngles("Ankle.R", 0f, nodes[12], -nodes[13]);
-                        // Left arm update
-                        setEulerAngles("Shoulder.L", nodes[14], -nodes[15], 0f);
-                        setEulerAngles("Elbow.L", nodes[16], -nodes[17], 0f);
-                        setEulerAngles("Wrist.L", nodes[18], 0f, 0f);
-                        // Right arm update
-                        setEulerAngles("Shoulder.R", -nodes[19], nodes[20], 0f);
-                        setEulerAngles("Elbow.R", nodes[21], nodes[22], 0f);
-                        setEulerAngles("Wrist.R", nodes[23], 0f, 0f);
-                        setEulerAngles("spine", -nodes[24], -nodes[25], 0f);
-                        calculateTransforms = true;
-                        // Pixels
-                        pixmap = new Pixmap(160, 120, Pixmap.Format.Intensity);
-                        for (int i = 0; i < 120; i++) {
-                            for (int j = 0; j < 160; j++) {
-                                int color = ByteBuffer.wrap(bytes, 104 + 2 * (160 * i + j), 2).getChar();
-                                pixmap.drawPixel(j, 120 - i, color);
-                            }
-                        }
-                    } catch (IOException e) {
-                        connectionEnded = true;
-                    }
-                } finally {
-                    // Make sure to unlock so that we don't cause a deadlock
-                    lock.unlock();
-                }
             }
         }
     }
@@ -338,9 +380,9 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
         // Locker
         final Skin skin = new Skin();
         skin.addRegions(textureAtlas);
-        // Wifi button
+        // Locker
         final ImageButton.ImageButtonStyle lockerButtonStyle = new ImageButton.ImageButtonStyle();
-        if (!locked) {
+        if (unlocked) {
             lockerButtonStyle.up = skin.getDrawable("opened");
             lockerButtonStyle.down = skin.getDrawable("opened");
         }
@@ -356,14 +398,39 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
             }
 
             public void touchUp(InputEvent event, float x, float y, int pointer, int button) {
-                locked = !locked;
-                if (!locked) {
+                unlocked = !unlocked;
+                if (unlocked) {
+                    // joints mode
                     lockerButtonStyle.up = skin.getDrawable("opened");
                     lockerButtonStyle.down = skin.getDrawable("opened");
+                    stage.clear();
+                    stage.addActor(locker);
+                    stage.addActor(display);
+                    stage.addActor(deactivatedArrowJoystickJoints);
+                    hasArrowJoystick = false;
+                    stage.addActor(deactivatedHatSwitch);
+                    hasArrowJoystick = false;
+                    for (Material robotMaterial : robot.materials) {
+                        robotMaterial.set(new BlendingAttribute(GL20.GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, 0.3f));
+                    }
                 }
                 else {
                     lockerButtonStyle.up = skin.getDrawable("closed");
                     lockerButtonStyle.down = skin.getDrawable("closed");
+                    stage.clear();
+                    stage.addActor(locker);
+                    stage.addActor(display);
+                    stage.addActor(button1);
+                    stage.addActor(button2);
+                    stage.addActor(button3);
+                    stage.addActor(arrowJoystick);
+                    for (Material robotMaterial : robot.materials) {
+                        robotMaterial.set(new BlendingAttribute(GL20.GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, 1.0f));
+                    }
+                    if (selectedJoint != null) {
+                        selectedJoint.getSphere().materials.first().set(new BlendingAttribute(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA, 0f));
+                        selectedJoint = null;
+                    }
                 }
             }
         };
@@ -381,6 +448,57 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
             pixmap.dispose();
             pixmap = null;
         }
+        // button1
+        final ImageButton.ImageButtonStyle button1Style = new ImageButton.ImageButtonStyle();
+        button1Style.up = skin.getDrawable("button1");
+        button1Style.down = skin.getDrawable("button1");
+        button1Style.disabled = skin.getDrawable("button1-deactivated");
+        button1 = new ImageButton(button1Style);
+        InputListener button1Listener = new InputListener() {
+            public boolean touchDown(InputEvent event, float x, float y, int pointer, int button) {
+                return true;
+            }
+
+            public void touchUp(InputEvent event, float x, float y, int pointer, int button) {
+                exService.submit(new GoToPosture(1));
+            }
+        };
+        button1.addListener(button1Listener);
+        stage.addActor(button1);
+        // button2
+        final ImageButton.ImageButtonStyle button2Style = new ImageButton.ImageButtonStyle();
+        button2Style.up = skin.getDrawable("button2");
+        button2Style.down = skin.getDrawable("button2");
+        button2Style.disabled = skin.getDrawable("button2-deactivated");
+        button2 = new ImageButton(button2Style);
+        InputListener button2Listener = new InputListener() {
+            public boolean touchDown(InputEvent event, float x, float y, int pointer, int button) {
+                return true;
+            }
+
+            public void touchUp(InputEvent event, float x, float y, int pointer, int button) {
+                exService.submit(new GoToPosture(4));
+            }
+        };
+        button2.addListener(button2Listener);
+        stage.addActor(button2);
+        // button3
+        final ImageButton.ImageButtonStyle button3Style = new ImageButton.ImageButtonStyle();
+        button3Style.up = skin.getDrawable("button3");
+        button3Style.down = skin.getDrawable("button3");
+        button3Style.disabled = skin.getDrawable("button3-deactivated");
+        button3 = new ImageButton(button1Style);
+        InputListener button3Listener = new InputListener() {
+            public boolean touchDown(InputEvent event, float x, float y, int pointer, int button) {
+                return true;
+            }
+
+            public void touchUp(InputEvent event, float x, float y, int pointer, int button) {
+                exService.submit(new GoToPosture(7));
+            }
+        };
+        button3.addListener(button3Listener);
+        stage.addActor(button3);
         // Arrow Joystick
         Skin arrowJoystickSkin = new Skin();
         Sprite arrowJoystickBackground = new Sprite(textureAtlas.findRegion("joystick-background"));
@@ -393,8 +511,13 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
         arrowJoystick = new Touchpad(10, arrowJoystickStyle);
         arrowJoystick.setWidth(arrowJoystickBackground.getWidth());
         arrowJoystick.setHeight(arrowJoystickBackground.getHeight());
-        deactivatedArrowJoystick = new Image(textureAtlas.findRegion("joystick-deactivated"));
-        stage.addActor(deactivatedArrowJoystick);
+        stage.addActor(arrowJoystick);
+        // Arrow Joystick Joints
+        arrowJoystickJoints = new Touchpad(10, arrowJoystickStyle);
+        arrowJoystickJoints.setWidth(arrowJoystickBackground.getWidth());
+        arrowJoystickJoints.setHeight(arrowJoystickBackground.getHeight());
+        deactivatedArrowJoystickJoints = new Image(textureAtlas.findRegion("joystick-deactivated"));
+        //stage.addActor(deactivatedArrowJoystick);
         // Hat Switch
         Skin hatSwitchSkin = new Skin();
         hatSwitchSkin.addRegions(textureAtlas);
@@ -404,7 +527,7 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
         hatSwitch.setWidth(hatSwitchBackground.getMinWidth());
         hatSwitch.setHeight(hatSwitchBackground.getMinHeight());
         deactivatedHatSwitch = new Image(textureAtlas.findRegion("hat-switch-deactivated"));
-        stage.addActor(deactivatedHatSwitch);
+        //stage.addActor(deactivatedHatSwitch);
         // 3D Stuff
         // A ModelBatch is like a SpriteBatch, just for models. Use it to batch up geometry for OpenGL
         modelBatch = new ModelBatch();
@@ -414,7 +537,7 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
         // Set its blending attribute
         robot = new ModelInstance(robotModel);
         for (Material robotMaterial : robot.materials) {
-            robotMaterial.set(new BlendingAttribute(GL20.GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, 0.3f));
+            robotMaterial.set(new BlendingAttribute(GL20.GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, 1.0f));
         }
         // Head
         Model yawPitch = humanoidRobotRemoteController.assetManager.get("data/yawPitch.g3db", Model.class);
@@ -563,10 +686,14 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
     @Override
     public void resize(int width, int height) {
         locker.setPosition(width / 2 - locker.getWidth() / 2 - hatSwitch.getWidth() / 2 - height / 8, 3 * height / 8 - locker.getHeight());
-        display.setPosition(-width / 2 - display.getWidth() / 2 + arrowJoystick.getWidth() / 2 + height / 8, 3 * height / 8 - display.getHeight());
+        display.setPosition(-width / 2 - display.getWidth() / 2 + arrowJoystickJoints.getWidth() / 2 + height / 8, 3 * height / 8 - display.getHeight());
+        button1.setPosition(width / 2 - hatSwitch.getWidth() - height / 8, - height / 2 + height / 8);
+        button2.setPosition(width / 2 - button2.getWidth() - height / 8, - height / 2 + height / 8);
+        button3.setPosition(width / 2 - button3.getWidth() - height / 8, - height / 2 - button3.getHeight() + hatSwitch.getHeight() + height / 8);
         arrowJoystick.setPosition(-width / 2 + height / 8, -height / 2 + height / 8);
-        deactivatedArrowJoystick.setPosition(-width / 2 + height / 8, -height / 2 + height / 8);
-        hatSwitch.setPosition(width / 2 - hatSwitch.getWidth() - height / 8, -height / 2 + height / 8);
+        arrowJoystickJoints.setPosition(-width / 2 + height / 8, -height / 2 + height / 8);
+        deactivatedArrowJoystickJoints.setPosition(-width / 2 + height / 8, - height / 2 + height / 8);
+        hatSwitch.setPosition(width / 2 - hatSwitch.getWidth() - height / 8, - height / 2 + height / 8);
         deactivatedHatSwitch.setPosition(width / 2 - hatSwitch.getWidth() - height / 8, -3 * height / 8);
     }
 
@@ -647,12 +774,12 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                         exService.submit(new GetJointAnglesImagePixelsThread());
                     }
                 }
-                if (!locked) {
-                    count++;
-                    if (count >= 2) {
+                count++;
+                if (count >= 2) {
+                    if (unlocked) {
                         if (selectedJoint != null) {
-                            if (arrowJoystick.isTouched()) {
-                                exService.submit(new AddJointsValuesThread(selectedJoint.getName(), arrowJoystick.getKnobPercentX(), arrowJoystick.getKnobPercentY(), 0f));
+                            if (arrowJoystickJoints.isTouched()) {
+                                exService.submit(new AddJointsValuesThread(selectedJoint.getName(), arrowJoystickJoints.getKnobPercentX(), arrowJoystickJoints.getKnobPercentY(), 0f));
                             }
                             if (hatSwitch.isTouched()) {
                                 exService.submit(new AddJointsValuesThread(selectedJoint.getName(), 0f, 0f, hatSwitch.getKnobPercent()));
@@ -664,7 +791,7 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                                     stage.addActor(display);
                                     stage.addActor(deactivatedHatSwitch);
                                     hasHatSwitch = false;
-                                    stage.addActor(arrowJoystick);
+                                    stage.addActor(arrowJoystickJoints);
                                     hasArrowJoystick = true;
                                 }
                             } else if (selectedJoint.getName().equals("Wrist.L") || selectedJoint.getName().equals("Wrist.R")) {
@@ -672,7 +799,7 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                                     stage.clear();
                                     stage.addActor(locker);
                                     stage.addActor(display);
-                                    stage.addActor(deactivatedArrowJoystick);
+                                    stage.addActor(deactivatedArrowJoystickJoints);
                                     hasArrowJoystick = false;
                                     stage.addActor(hatSwitch);
                                     hasHatSwitch = true;
@@ -682,7 +809,7 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                                     stage.clear();
                                     stage.addActor(locker);
                                     stage.addActor(display);
-                                    stage.addActor(arrowJoystick);
+                                    stage.addActor(arrowJoystickJoints);
                                     hasArrowJoystick = true;
                                     stage.addActor(hatSwitch);
                                     hasHatSwitch = true;
@@ -691,15 +818,27 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                         } else {
                             if (hasArrowJoystick || hasHatSwitch) {
                                 stage.clear();
+                                stage.addActor(locker);
                                 stage.addActor(display);
-                                stage.addActor(deactivatedArrowJoystick);
+                                stage.addActor(deactivatedArrowJoystickJoints);
                                 hasArrowJoystick = false;
                                 stage.addActor(deactivatedHatSwitch);
                                 hasHatSwitch = false;
                             }
                         }
-                        count = 0;
+                    } else {
+                        if (arrowJoystick.isTouched()) {
+                            float x = arrowJoystick.getKnobPercentX();
+                            float y = arrowJoystick.getKnobPercentY();
+                            if (y >= 0) {
+                                exService.submit(new WalkTurnThread(y, x, 0f));
+                            }
+                            else {
+                                exService.submit(new WalkTurnThread(0f, 0f, -x));
+                            }
+                        }
                     }
+                    count = 0;
                 }
                 elapsedTime = 0f;
             }
@@ -710,9 +849,11 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
             // Like spriteBatch, just with models!  pass in the box Instance and the environment
             modelBatch.begin(camera3D);
             modelBatch.render(robot, environment);
-            for (Joint joint : joints) {
-                modelBatch.render(joint.getJoint(), environment);
-                modelBatch.render(joint.getSphere(), environment);
+            if (unlocked) {
+                for (Joint joint : joints) {
+                    modelBatch.render(joint.getJoint(), environment);
+                    modelBatch.render(joint.getSphere(), environment);
+                }
             }
             modelBatch.end();
             stage.act(Gdx.graphics.getDeltaTime());

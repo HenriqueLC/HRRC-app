@@ -8,7 +8,6 @@ import android.content.DialogInterface;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Bundle;
-import android.util.Log;
 import android.widget.Toast;
 
 import com.badlogic.gdx.backends.android.AndroidApplication;
@@ -64,7 +63,6 @@ public class AndroidLauncher extends AndroidApplication implements RequestHandle
             }
 	    });
     }
-
 
 	// Dialogs
 	@Override

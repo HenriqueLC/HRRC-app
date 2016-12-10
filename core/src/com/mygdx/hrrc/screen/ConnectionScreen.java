@@ -22,23 +22,18 @@ import com.mygdx.hrrc.dialog.ConfirmInterface;
 import com.mygdx.hrrc.network.BooleanResultInterface;
 import com.mygdx.hrrc.screen.util.Text;
 
-import java.io.BufferedReader;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.nio.ByteBuffer;
 
 class ConnectionScreen extends AbstractScreen {
 
     private ConnectionScreen connectionScreen;
     private Stage stage; // disposable
     private ImageButton wifiButton, bluetoothButton; // disposable
-    private InputListener bluetoothButtonListener;
     private Text instructions; // disposable
     private BooleanResultInterface wifiResultInterface, bluetoothResultInterface;
-    private boolean isWifiOn, wifiStateHasChanged, isBluetoothOn, bluetoothStateHasChanged, hideMessage;
+    private boolean isWifiOn, wifiStateHasChanged, isBluetoothOn, bluetoothStateHasChanged;
     private float elapsedTime;
 
     ConnectionScreen(HRRC humanoidRobotRemoteController) {
@@ -68,8 +63,6 @@ class ConnectionScreen extends AbstractScreen {
             }
 
             public void touchUp(InputEvent event, float x, float y, int pointer, int button) {
-                // Hide the choose message
-                hideMessage = true;
                 // Input text dialog
                 Gdx.input.getTextInput(
                         new Input.TextInputListener() {
@@ -119,8 +112,6 @@ class ConnectionScreen extends AbstractScreen {
 
                             @Override
                             public void canceled() {
-                                // Show the choose message
-                                hideMessage = false;
                             }
                         },
                         "IP address",
@@ -139,7 +130,7 @@ class ConnectionScreen extends AbstractScreen {
         bluetoothButton = new ImageButton(bluetoothButtonStyle);
         stage.addActor(bluetoothButton);
         // Bluetooth button event listener
-        bluetoothButtonListener = new InputListener() {
+        InputListener bluetoothButtonListener = new InputListener() {
             public boolean touchDown(InputEvent event, float x, float y, int pointer, int button) {
                 return true;
             }
@@ -287,20 +278,14 @@ class ConnectionScreen extends AbstractScreen {
         wifiStateHasChanged = false;
         bluetoothStateHasChanged = false;
         // Blink the instruction message
-        if (!hideMessage) {
-            elapsedTime += delta;
-            elapsedTime %= 2;
-            // Clear the screen
-            Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-            if (elapsedTime < 1) {
-                instructions.setAlphas(elapsedTime);
-            } else {
-                instructions.setAlphas(2 - elapsedTime);
-            }
-        }
-        else {
-            instructions.setAlphas(0f);
-            elapsedTime = 0;
+        elapsedTime += delta;
+        elapsedTime %= 2;
+        // Clear the screen
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+        if (elapsedTime < 1) {
+            instructions.setAlphas(elapsedTime);
+        } else {
+            instructions.setAlphas(2 - elapsedTime);
         }
         // Show the connection screen
         stage.draw();

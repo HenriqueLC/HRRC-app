@@ -115,7 +115,7 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
     private Joint[] joints;
     private Environment environment;
     private PerspectiveCamera camera3D;
-    private Socket socket; // disposable
+    private Socket socket;
     private DataOutputStream dataOutputStream;
     private DataInputStream dataInputStream;
     private ExecutorService exService;
@@ -237,6 +237,10 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                         float zRight = ByteBuffer.wrap(bytes, 108, 4).getFloat();
                         float z = (zLeft + zRight) / 2 - 14.2f;
                         robot.transform.setTranslation(0, z, 0);
+                        for (Joint joint : joints) {
+                            joint.getJoint().transform.setTranslation(0, z, 0);
+                            joint.getSphere().transform.setTranslation(0, z, 0);
+                        }
                         // Head update
                         setEulerAngles("Head", nodes[0], nodes[1], 0f);
                         // Left leg update
@@ -831,7 +835,7 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                             float x = arrowJoystick.getKnobPercentX();
                             float y = arrowJoystick.getKnobPercentY();
                             if (y >= 0) {
-                                exService.submit(new WalkTurnThread(y, x, 0f));
+                                exService.submit(new WalkTurnThread(y, -x, 0f));
                             }
                             else {
                                 exService.submit(new WalkTurnThread(0f, 0f, -x));

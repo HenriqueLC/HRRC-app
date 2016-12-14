@@ -29,9 +29,9 @@ import java.io.IOException;
 class ConnectionScreen extends AbstractScreen {
 
     private ConnectionScreen connectionScreen;
-    private Stage stage; // disposable
-    private ImageButton wifiButton, bluetoothButton; // disposable
-    private Text instructions; // disposable
+    private Stage stage;
+    private ImageButton wifiButton, bluetoothButton;
+    private Text instructions;
     private BooleanResultInterface wifiResultInterface, bluetoothResultInterface;
     private boolean isWifiOn, wifiStateHasChanged, isBluetoothOn, bluetoothStateHasChanged;
     private float elapsedTime;

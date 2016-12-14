@@ -35,7 +35,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.Drawable;
 import com.badlogic.gdx.scenes.scene2d.utils.SpriteDrawable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.mygdx.hrrc.HRRC;
-import com.mygdx.hrrc.screen.util.HatSwitch;
+import com.mygdx.hrrc.screen.util.SliderJoystick;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -59,11 +59,11 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
     private ImageButton button1, button2, button3;
     private Touchpad arrowJoystick, arrowJoystickJoints;
     private Image deactivatedArrowJoystickJoints;
-    private HatSwitch hatSwitch;
-    private Image deactivatedHatSwitch;
-    private boolean hasArrowJoystick, hasHatSwitch;
-    private ModelBatch modelBatch; // disposable
-    private ModelInstance robot; // disposable
+    private SliderJoystick sliderJoystick;
+    private Image deactivatedSliderJoystick;
+    private boolean hasArrowJoystick, hasSliderJoystick;
+    private ModelBatch modelBatch;
+    private ModelInstance robot;
     private class YawPitchRoll {
         private final float yaw, pitch, roll;
 
@@ -216,7 +216,7 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
         robot.getNode(nodeId).rotation.setEulerAngles(defaultRotationValues.get(nodeId).getYaw() + yaw, defaultRotationValues.get(nodeId).getPitch() + pitch, defaultRotationValues.get(nodeId).getRoll() + roll);
     }
 
-    private class GetJointAnglesImagePixelsThread implements Runnable {
+    private class GetJointAnglesAndVisionSensorImage implements Runnable {
         @Override
         public void run() {
             if (lock.tryLock()) {
@@ -280,10 +280,10 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
         }
     }
 
-    private class WalkTurnThread implements Runnable {
+    private class WalkTurn implements Runnable {
         private float x, y, theta;
 
-        WalkTurnThread(float x, float y, float theta) {
+        WalkTurn(float x, float y, float theta) {
             this.x = x;
             this.y = y;
             this.theta = theta;
@@ -320,11 +320,11 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
         }
     }
 
-    private class AddJointsValuesThread implements Runnable {
+    private class ChangeJointsAngles implements Runnable {
         private int command;
         private float yaw, pitch, roll;
 
-        AddJointsValuesThread(String jointID, float yaw, float pitch, float roll) {
+        ChangeJointsAngles(String jointID, float yaw, float pitch, float roll) {
             int command = -1;
             if (jointID.equals("Head")) {
                 command = 0;
@@ -412,7 +412,7 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                     stage.addActor(display);
                     stage.addActor(deactivatedArrowJoystickJoints);
                     hasArrowJoystick = false;
-                    stage.addActor(deactivatedHatSwitch);
+                    stage.addActor(deactivatedSliderJoystick);
                     hasArrowJoystick = false;
                     for (Material robotMaterial : robot.materials) {
                         robotMaterial.set(new BlendingAttribute(GL20.GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, 0.3f));
@@ -523,15 +523,15 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
         deactivatedArrowJoystickJoints = new Image(textureAtlas.findRegion("joystick-deactivated"));
         //stage.addActor(deactivatedArrowJoystick);
         // Hat Switch
-        Skin hatSwitchSkin = new Skin();
-        hatSwitchSkin.addRegions(textureAtlas);
-        Drawable hatSwitchBackground = hatSwitchSkin.getDrawable("hat-switch-background");
-        Drawable hatSwitchKnob = hatSwitchSkin.getDrawable("hat-switch-knob");
-        hatSwitch = new HatSwitch(hatSwitchKnob, 64f, hatSwitchBackground, 192f);
-        hatSwitch.setWidth(hatSwitchBackground.getMinWidth());
-        hatSwitch.setHeight(hatSwitchBackground.getMinHeight());
-        deactivatedHatSwitch = new Image(textureAtlas.findRegion("hat-switch-deactivated"));
-        //stage.addActor(deactivatedHatSwitch);
+        Skin sliderJoystickSkin = new Skin();
+        sliderJoystickSkin.addRegions(textureAtlas);
+        Drawable sliderJoystickBackground = sliderJoystickSkin.getDrawable("hat-switch-background");
+        Drawable sliderJoystickKnob = sliderJoystickSkin.getDrawable("hat-switch-knob");
+        sliderJoystick = new SliderJoystick(sliderJoystickKnob, 64f, sliderJoystickBackground, 192f);
+        sliderJoystick.setWidth(sliderJoystickBackground.getMinWidth());
+        sliderJoystick.setHeight(sliderJoystickBackground.getMinHeight());
+        deactivatedSliderJoystick = new Image(textureAtlas.findRegion("hat-switch-deactivated"));
+        //stage.addActor(deactivatedSliderJoystick);
         // 3D Stuff
         // A ModelBatch is like a SpriteBatch, just for models. Use it to batch up geometry for OpenGL
         modelBatch = new ModelBatch();
@@ -689,16 +689,16 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
 
     @Override
     public void resize(int width, int height) {
-        locker.setPosition(width / 2 - locker.getWidth() / 2 - hatSwitch.getWidth() / 2 - height / 8, 3 * height / 8 - locker.getHeight());
+        locker.setPosition(width / 2 - locker.getWidth() / 2 - sliderJoystick.getWidth() / 2 - height / 8, 3 * height / 8 - locker.getHeight());
         display.setPosition(-width / 2 - display.getWidth() / 2 + arrowJoystickJoints.getWidth() / 2 + height / 8, 3 * height / 8 - display.getHeight());
-        button1.setPosition(width / 2 - hatSwitch.getWidth() - height / 8, - height / 2 + height / 8);
+        button1.setPosition(width / 2 - sliderJoystick.getWidth() - height / 8, - height / 2 + height / 8);
         button2.setPosition(width / 2 - button2.getWidth() - height / 8, - height / 2 + height / 8);
-        button3.setPosition(width / 2 - button3.getWidth() - height / 8, - height / 2 - button3.getHeight() + hatSwitch.getHeight() + height / 8);
+        button3.setPosition(width / 2 - button3.getWidth() - height / 8, - height / 2 - button3.getHeight() + sliderJoystick.getHeight() + height / 8);
         arrowJoystick.setPosition(-width / 2 + height / 8, -height / 2 + height / 8);
         arrowJoystickJoints.setPosition(-width / 2 + height / 8, -height / 2 + height / 8);
         deactivatedArrowJoystickJoints.setPosition(-width / 2 + height / 8, - height / 2 + height / 8);
-        hatSwitch.setPosition(width / 2 - hatSwitch.getWidth() - height / 8, - height / 2 + height / 8);
-        deactivatedHatSwitch.setPosition(width / 2 - hatSwitch.getWidth() - height / 8, -3 * height / 8);
+        sliderJoystick.setPosition(width / 2 - sliderJoystick.getWidth() - height / 8, - height / 2 + height / 8);
+        deactivatedSliderJoystick.setPosition(width / 2 - sliderJoystick.getWidth() - height / 8, -3 * height / 8);
     }
 
     @Override
@@ -775,7 +775,7 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                     } finally {
                         // Make sure to unlock so that we don't cause a deadlock
                         lock.unlock();
-                        exService.submit(new GetJointAnglesImagePixelsThread());
+                        exService.submit(new GetJointAnglesAndVisionSensorImage());
                     }
                 }
                 count++;
@@ -783,62 +783,63 @@ class ControllerScreen extends AbstractScreen implements InputProcessor {
                     if (unlocked) {
                         if (selectedJoint != null) {
                             if (arrowJoystickJoints.isTouched()) {
-                                exService.submit(new AddJointsValuesThread(selectedJoint.getName(), arrowJoystickJoints.getKnobPercentX(), arrowJoystickJoints.getKnobPercentY(), 0f));
+                                exService.submit(new ChangeJointsAngles(selectedJoint.getName(), arrowJoystickJoints.getKnobPercentX(), arrowJoystickJoints.getKnobPercentY(), 0f));
                             }
-                            if (hatSwitch.isTouched()) {
-                                exService.submit(new AddJointsValuesThread(selectedJoint.getName(), 0f, 0f, hatSwitch.getKnobPercent()));
+                            if (sliderJoystick.isTouched()) {
+                                exService.submit(new ChangeJointsAngles(selectedJoint.getName(), 0f, 0f, sliderJoystick.getKnobPercent()));
                             }
                             if (selectedJoint.getName().equals("Head") || selectedJoint.getName().equals("Knee.L") || selectedJoint.getName().equals("Knee.R") || selectedJoint.getName().equals("Shoulder.L") || selectedJoint.getName().equals("Shoulder.R")) {
-                                if (!hasArrowJoystick || hasHatSwitch) {
+                                if (!hasArrowJoystick || hasSliderJoystick) {
                                     stage.clear();
                                     stage.addActor(locker);
                                     stage.addActor(display);
-                                    stage.addActor(deactivatedHatSwitch);
-                                    hasHatSwitch = false;
+                                    stage.addActor(deactivatedSliderJoystick);
+                                    hasSliderJoystick = false;
                                     stage.addActor(arrowJoystickJoints);
                                     hasArrowJoystick = true;
                                 }
                             } else if (selectedJoint.getName().equals("Wrist.L") || selectedJoint.getName().equals("Wrist.R")) {
-                                if (hasArrowJoystick || !hasHatSwitch) {
+                                if (hasArrowJoystick || !hasSliderJoystick) {
                                     stage.clear();
                                     stage.addActor(locker);
                                     stage.addActor(display);
                                     stage.addActor(deactivatedArrowJoystickJoints);
                                     hasArrowJoystick = false;
-                                    stage.addActor(hatSwitch);
-                                    hasHatSwitch = true;
+                                    stage.addActor(sliderJoystick);
+                                    hasSliderJoystick = true;
                                 }
                             } else {
-                                if (!hasArrowJoystick || !hasHatSwitch) {
+                                if (!hasArrowJoystick || !hasSliderJoystick) {
                                     stage.clear();
                                     stage.addActor(locker);
                                     stage.addActor(display);
                                     stage.addActor(arrowJoystickJoints);
                                     hasArrowJoystick = true;
-                                    stage.addActor(hatSwitch);
-                                    hasHatSwitch = true;
+                                    stage.addActor(sliderJoystick);
+                                    hasSliderJoystick = true;
                                 }
                             }
                         } else {
-                            if (hasArrowJoystick || hasHatSwitch) {
+                            if (hasArrowJoystick || hasSliderJoystick) {
                                 stage.clear();
                                 stage.addActor(locker);
                                 stage.addActor(display);
                                 stage.addActor(deactivatedArrowJoystickJoints);
                                 hasArrowJoystick = false;
-                                stage.addActor(deactivatedHatSwitch);
-                                hasHatSwitch = false;
+                                stage.addActor(deactivatedSliderJoystick);
+                                hasSliderJoystick = false;
                             }
                         }
                     } else {
                         if (arrowJoystick.isTouched()) {
-                            float x = arrowJoystick.getKnobPercentX();
-                            float y = arrowJoystick.getKnobPercentY();
-                            if (y >= 0) {
-                                exService.submit(new WalkTurnThread(y, -x, 0f));
+                            float knobPercentX = arrowJoystick.getKnobPercentX();
+                            float knobPercentY = arrowJoystick.getKnobPercentY();
+                            if (knobPercentY >= 0) {
+                                //noinspection SuspiciousNameCombination
+                                exService.submit(new WalkTurn(knobPercentY, -knobPercentX, 0f));
                             }
                             else {
-                                exService.submit(new WalkTurnThread(0f, 0f, -x));
+                                exService.submit(new WalkTurn(0f, 0f, -knobPercentX));
                             }
                         }
                     }

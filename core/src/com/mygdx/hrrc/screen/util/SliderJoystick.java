@@ -14,7 +14,7 @@ import static java.lang.Math.cos;
 import static java.lang.Math.sin;
 import static java.lang.Math.toRadians;
 
-public class HatSwitch extends Widget {
+public class SliderJoystick extends Widget {
     private boolean touched;
     private final Vector2 origin = new Vector2();
     private final Vector2 knobPosition = new Vector2();
@@ -66,7 +66,7 @@ public class HatSwitch extends Widget {
     }
     private TouchBound touchBound;
 
-    public HatSwitch(Drawable knob, float knobRadius, Drawable background, float radius) {
+    public SliderJoystick(Drawable knob, float knobRadius, Drawable background, float radius) {
         this.knob = knob;
         this.knobRadius = knobRadius;
         this.background = background;

@@ -27,7 +27,7 @@ public class AndroidLauncher extends AndroidApplication implements RequestHandle
 		// Remote Controller configuration
 		AndroidApplicationConfiguration androidApplicationConfiguration = new AndroidApplicationConfiguration();
 		androidApplicationConfiguration.useAccelerometer = true;
-		// Initializes by the loading screen
+		// Initialize by the loading screen
 		initialize(new HRRC(this, this, this), androidApplicationConfiguration);
 	}
 
